@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>HorseSync</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            background: transparent;
+            overflow: hidden;
+            font-family: 'Georgia', 'Times New Roman', serif;
+            pointer-events: none;
+        }
+
+        /* ── Notifications ───────────────────────────────── */
+        #notification-container {
+            position: fixed;
+            bottom: 80px; right: 30px;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 10px;
+            z-index: 9999;
+        }
+
+        .notification {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 18px;
+            min-width: 260px; max-width: 340px;
+            border-radius: 2px;
+            background: rgba(10,8,5,0.92);
+            border-left: 3px solid #8b6914;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.7),
+                        inset 0 1px 0 rgba(255,220,100,0.06);
+            opacity: 0;
+            transform: translateX(30px);
+            animation: slideIn 0.35s cubic-bezier(0.22,1,0.36,1) forwards;
+        }
+        .notification.hide  { animation: slideOut 0.3s ease-in forwards; }
+        .notification.enabled  { border-left-color: #7db87d; }
+        .notification.disabled { border-left-color: #b87d7d; }
+        .notification.warning  { border-left-color: #b8aa7d; }
+        .notification::after {
+            content:''; position:absolute; top:0; right:0;
+            border-style:solid; border-width:0 8px 8px 0;
+            border-color:transparent rgba(200,180,120,0.12) transparent transparent;
+        }
+        .notif-icon { flex-shrink:0; width:28px; height:28px; display:flex; align-items:center; justify-content:center; }
+        .notif-icon svg { width:22px; height:22px; }
+        .notification.enabled  .notif-icon svg { fill:#7db87d; }
+        .notification.disabled .notif-icon svg { fill:#b87d7d; }
+        .notification.warning  .notif-icon svg { fill:#b8aa7d; }
+        .notif-body  { flex:1; display:flex; flex-direction:column; gap:2px; }
+        .notif-title { font-size:10px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:rgba(200,180,120,0.7); }
+        .notif-message { font-size:13px; color:rgba(235,220,185,0.92); letter-spacing:0.02em; line-height:1.4; }
+        .notif-progress { position:absolute; bottom:0; left:0; height:2px; width:100%; background:rgba(255,255,255,0.06); border-radius:0 0 2px 2px; overflow:hidden; }
+        .notif-progress-bar { height:100%; width:100%; transform-origin:left; animation:shrink linear forwards; }
+        .notification.enabled  .notif-progress-bar { background:#7db87d; }
+        .notification.disabled .notif-progress-bar { background:#b87d7d; }
+        .notification.warning  .notif-progress-bar { background:#b8aa7d; }
+
+        @keyframes slideIn { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes slideOut { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(30px)} }
+        @keyframes shrink   { from{transform:scaleX(1)} to{transform:scaleX(0)} }
+
+        /* ── Command Suggestions ─────────────────────────── */
+        #suggestions {
+            position: fixed;
+            bottom: 52px; left: 20px;
+            width: 440px;
+            background: rgba(8,6,3,0.95);
+            border: 1px solid rgba(180,150,60,0.2);
+            border-radius: 2px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.65);
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            pointer-events: none;
+            z-index: 9998;
+        }
+        #suggestions.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .suggestions-header {
+            padding: 5px 12px 4px;
+            font-size: 9px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: rgba(180,150,60,0.45);
+            border-bottom: 1px solid rgba(180,150,60,0.08);
+        }
+
+        .suggestion-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.025);
+            transition: background 0.1s;
+        }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item.active { background: rgba(180,150,60,0.09); }
+        .suggestion-item.active .cmd-name { color: rgba(230,200,110,1); }
+
+        .cmd-left { display:flex; flex-direction:column; gap:4px; min-width:185px; }
+
+        .cmd-name {
+            font-size: 13px;
+            color: rgba(200,175,100,0.8);
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .cmd-name .match { color: rgba(255,225,110,1); font-weight:bold; }
+
+        .cmd-args { display:flex; gap:4px; flex-wrap:wrap; }
+        .cmd-arg {
+            font-size: 10px;
+            background: rgba(180,150,60,0.1);
+            color: rgba(200,175,100,0.55);
+            border: 1px solid rgba(180,150,60,0.18);
+            border-radius: 2px;
+            padding: 1px 5px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .cmd-desc {
+            font-size: 11px;
+            color: rgba(185,170,140,0.45);
+            line-height: 1.5;
+            padding-top: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="notification-container"></div>
+
+<div id="suggestions">
+    <div class="suggestions-header">HorseSync Commands</div>
+</div>
+
+<script>
+    // ── Command registry ──────────────────────────────────────
+    const COMMANDS = [
+        { cmd: '/horsesync',       args: ['on','off'], desc: 'Toggle horse speed sync on or off'              },
+        { cmd: '/horsesyncstatus', args: [],           desc: 'Show your current horse sync state'             },
+        { cmd: '/horsesyncall',    args: ['on','off'], desc: 'Set sync for all players (txAdmin/console only)' },
+    ];
+
+    // ── Notification system ───────────────────────────────────
+    const notifWrap = document.getElementById('notification-container');
+    const ICONS = {
+        enabled:  `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg>`,
+        disabled: `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>`,
+        warning:  `<svg viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>`,
+    };
+
+    function showNotification(message, type = 'enabled', duration = 4000) {
+        const el = document.createElement('div');
+        el.className = `notification ${type}`;
+        el.innerHTML = `
+            <div class="notif-icon">${ICONS[type] ?? ICONS.enabled}</div>
+            <div class="notif-body">
+                <span class="notif-title">HorseSync</span>
+                <span class="notif-message">${message}</span>
+            </div>
+            <div class="notif-progress">
+                <div class="notif-progress-bar" style="animation-duration:${duration}ms"></div>
+            </div>`;
+        notifWrap.appendChild(el);
+        setTimeout(() => {
+            el.classList.add('hide');
+            el.addEventListener('animationend', () => el.remove(), { once: true });
+        }, duration);
+    }
+
+    // ── Suggestion system ─────────────────────────────────────
+    const suggestEl = document.getElementById('suggestions');
+    const header    = suggestEl.querySelector('.suggestions-header');
+
+    function highlight(text, query) {
+        if (!query) return text;
+        const i = text.toLowerCase().indexOf(query.toLowerCase());
+        if (i < 0) return text;
+        return text.slice(0, i)
+             + `<span class="match">${text.slice(i, i + query.length)}</span>`
+             + text.slice(i + query.length);
+    }
+
+    function renderSuggestions(input) {
+        // Clear items (keep header)
+        [...suggestEl.querySelectorAll('.suggestion-item')].forEach(e => e.remove());
+
+        if (!input || !input.startsWith('/')) {
+            suggestEl.classList.remove('visible');
+            return;
+        }
+
+        const matches = COMMANDS.filter(c =>
+            c.cmd.toLowerCase().startsWith(input.toLowerCase())
+        );
+
+        if (matches.length === 0) {
+            suggestEl.classList.remove('visible');
+            return;
+        }
+
+        matches.forEach((c, i) => {
+            const item = document.createElement('div');
+            item.className = 'suggestion-item' + (i === 0 ? ' active' : '');
+            item.innerHTML = `
+                <div class="cmd-left">
+                    <div class="cmd-name">${highlight(c.cmd, input)}</div>
+                    ${c.args.length ? `<div class="cmd-args">${c.args.map(a => `<span class="cmd-arg">${a}</span>`).join('')}</div>` : ''}
+                </div>
+                <div class="cmd-desc">${c.desc}</div>`;
+            suggestEl.appendChild(item);
+        });
+
+        suggestEl.classList.add('visible');
+    }
+
+    // ── Message handler ───────────────────────────────────────
+    window.addEventListener('message', ({ data }) => {
+        if (!data) return;
+
+        if (data.type === 'horsesync:notify') {
+            showNotification(data.message ?? '', data.style ?? 'enabled', data.duration ?? 4000);
+        }
+
+        if (data.type === 'horsesync:chatInput') {
+            renderSuggestions(data.input ?? '');
+        }
+
+        if (data.type === 'horsesync:chatClose') {
+            suggestEl.classList.remove('visible');
+            [...suggestEl.querySelectorAll('.suggestion-item')].forEach(e => e.remove());
+        }
+    });
+</script>
+</body>
+</html>
