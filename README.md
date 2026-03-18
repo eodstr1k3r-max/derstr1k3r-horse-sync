@@ -1,7 +1,7 @@
 # derstr1k3r-horse-sync
 
 > **Developer:** DerStr1k3r
-> **Version:** 1.0.0
+> **Version:** 1.0.1
 > **Game:** RedM (RDR3)
 
 Synchronises horse speed and animation config flags for the local player ped.
